@@ -1,3 +1,5 @@
+'use strict';
+
 var ROW_RECIPIENT = 1;
 var ROW_GIVER_TEAM = 2;
 var ROW_RECIPIENT_TEAM = 3;
@@ -130,7 +132,7 @@ function showVisibilityCheckboxesIfCustomOptionSelected($containingForm) {
 }
 
 function uncheckAllVisibilityOptionCheckboxes($containingForm) {
-    $containingForm.find('input[type="checkbox"]').each(function(index, checkbox) {
+    $containingForm.find('input.visibilityCheckbox').each(function(index, checkbox) {
         checkbox.checked = false;
     });
 }

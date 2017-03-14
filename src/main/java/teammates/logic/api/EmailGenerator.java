@@ -11,9 +11,7 @@ import teammates.common.datatransfer.attributes.CourseAttributes;
 import teammates.common.datatransfer.attributes.FeedbackSessionAttributes;
 import teammates.common.datatransfer.attributes.InstructorAttributes;
 import teammates.common.datatransfer.attributes.StudentAttributes;
-import teammates.common.datatransfer.UserType;
 import teammates.common.exception.EntityDoesNotExistException;
-import teammates.common.exception.TeammatesException;
 import teammates.common.util.Config;
 import teammates.common.util.Const;
 import teammates.common.util.EmailType;
@@ -35,9 +33,9 @@ import com.google.appengine.api.log.AppLogLine;
 /**
  * Handles operations related to generating emails to be sent from provided templates.
  *
- * @see {@link EmailTemplates}
- * @see {@link EmailType}
- * @see {@link EmailWrapper}
+ * @see EmailTemplates
+ * @see EmailType
+ * @see EmailWrapper
  */
 public class EmailGenerator {
 
@@ -95,7 +93,84 @@ public class EmailGenerator {
     }
 
     /**
-     * Generates the feedback submission confirmation email for the given {@code session} for {@code student}
+     * Generates the email containing the summary of the feedback sessions
+     * email for the given {@code courseId} for {@code student}.
+     * @param courseId - ID of the course
+     * @param student - attributes of student to send feedback session summary to
+     */
+    public EmailWrapper generateFeedbackSessionSummaryOfCourse(String courseId, StudentAttributes student) {
+
+        CourseAttributes course = coursesLogic.getCourse(courseId);
+
+        List<FeedbackSessionAttributes> sessions = new ArrayList<FeedbackSessionAttributes>();
+        List<FeedbackSessionAttributes> fsInCourse = fsLogic.getFeedbackSessionsForCourse(courseId);
+
+        for (FeedbackSessionAttributes fsa : fsInCourse) {
+            if (!fsa.isPrivateSession() && (fsa.isSentOpenEmail() || fsa.isSentPublishedEmail())) {
+                sessions.add(fsa);
+            }
+        }
+
+        StringBuffer linksFragmentValue = new StringBuffer(1000);
+        String joinUrl = Config.getAppUrl(student.getRegistrationUrl()).toAbsoluteString();
+
+        String joinFragmentValue = isYetToJoinCourse(student)
+                                   ? Templates.populateTemplate(EmailTemplates.FRAGMENT_STUDENT_COURSE_JOIN,
+                                           "${joinUrl}", joinUrl,
+                                           "${courseName}", course.getName())
+                                   : "";
+
+        for (FeedbackSessionAttributes fsa : sessions) {
+
+            String submitUrlHtml = "(Feedback session is " + (fsa.isClosed() ? "closed" : "not yet opened") + ")";
+            String reportUrlHtml = "(Feedback session is not yet published)";
+
+            if (fsa.isOpened()) {
+                String submitUrl = Config.getAppUrl(Const.ActionURIs.STUDENT_FEEDBACK_SUBMISSION_EDIT_PAGE)
+                        .withCourseId(course.getId())
+                        .withSessionName(fsa.getFeedbackSessionName())
+                        .withRegistrationKey(StringHelper.encrypt(student.key))
+                        .withStudentEmail(student.email)
+                        .toAbsoluteString();
+                submitUrlHtml = "<a href=\"" + submitUrl + "\">" + submitUrl + "</a>";
+            }
+
+            if (fsa.isPublished()) {
+                String reportUrl = Config.getAppUrl(Const.ActionURIs.STUDENT_FEEDBACK_RESULTS_PAGE)
+                        .withCourseId(course.getId())
+                        .withSessionName(fsa.getFeedbackSessionName())
+                        .withRegistrationKey(StringHelper.encrypt(student.key))
+                        .withStudentEmail(student.email)
+                        .toAbsoluteString();
+                reportUrlHtml = "<a href=\"" + reportUrl + "\">" + reportUrl + "</a>";
+            }
+
+            linksFragmentValue.append(Templates.populateTemplate(
+                    EmailTemplates.FRAGMENT_SINGLE_FEEDBACK_SESSION_LINKS,
+                    "${feedbackSessionName}", fsa.getFeedbackSessionName(),
+                    "${deadline}", TimeHelper.formatTime12H(fsa.getEndTime()) + (fsa.isClosed() ? " (Passed)" : ""),
+                    "${submitUrl}", submitUrlHtml,
+                    "${reportUrl}", reportUrlHtml));
+        }
+
+        String emailBody = Templates.populateTemplate(EmailTemplates.USER_FEEDBACK_SESSION_RESEND_ALL_LINKS,
+                "${userName}", student.name,
+                "${userEmail}", student.email,
+                "${courseName}", course.getName(),
+                "${courseId}", course.getId(),
+                "${joinFragment}", joinFragmentValue,
+                "${linksFragment}", linksFragmentValue.toString(),
+                "${supportEmail}", Config.SUPPORT_EMAIL);
+
+        EmailWrapper email = getEmptyEmailAddressedToEmail(student.email);
+        email.setSubject(String.format(EmailType.STUDENT_EMAIL_CHANGED.getSubject(), course.getName(), course.getId()));
+        email.setContent(emailBody);
+
+        return email;
+    }
+
+    /**
+     * Generates the feedback submission confirmation email for the given {@code session} for {@code student}.
      */
     public EmailWrapper generateFeedbackSubmissionConfirmationEmailForStudent(
             FeedbackSessionAttributes session, StudentAttributes student, Calendar timestamp) {
@@ -235,7 +310,6 @@ public class EmailGenerator {
 
     /**
      * Generates the feedback session closed emails for the given {@code session}.
-     * @throws EntityDoesNotExistException
      */
     public List<EmailWrapper> generateFeedbackSessionClosedEmails(FeedbackSessionAttributes session) {
 
@@ -275,9 +349,8 @@ public class EmailGenerator {
                                            ? studentsLogic.getStudentsForCourse(session.getCourseId())
                                            : new ArrayList<StudentAttributes>();
 
-        List<EmailWrapper> emails = generateFeedbackSessionEmailBases(course, session, students, instructors, template,
-                                                                      EmailType.FEEDBACK_PUBLISHED.getSubject());
-        return emails;
+        return generateFeedbackSessionEmailBases(course, session, students, instructors, template,
+                EmailType.FEEDBACK_PUBLISHED.getSubject());
     }
 
     /**
@@ -296,9 +369,8 @@ public class EmailGenerator {
                                            ? studentsLogic.getStudentsForCourse(session.getCourseId())
                                            : new ArrayList<StudentAttributes>();
 
-        List<EmailWrapper> emails = generateFeedbackSessionEmailBases(course, session, students, instructors, template,
-                                                                      EmailType.FEEDBACK_UNPUBLISHED.getSubject());
-        return emails;
+        return generateFeedbackSessionEmailBases(course, session, students, instructors, template,
+                EmailType.FEEDBACK_UNPUBLISHED.getSubject());
     }
 
     private List<EmailWrapper> generateFeedbackSessionEmailBases(
@@ -566,45 +638,6 @@ public class EmailGenerator {
         return Templates.populateTemplate(emailBody,
                 "${joinFragment}", EmailTemplates.FRAGMENT_INSTRUCTOR_COURSE_JOIN,
                 "${joinUrl}", joinUrl);
-    }
-
-    /**
-     * Generates the system error report email for the given {@code error}.
-     */
-    public EmailWrapper generateSystemErrorEmail(
-            String requestMethod, String requestUserAgent, String requestPath, String requestUrl,
-            String requestParams, UserType userType, Throwable error) {
-
-        String errorMessage = error.getMessage();
-        String stackTrace = TeammatesException.toStringWithStackTrace(error);
-
-        // If the error doesn't contain a short description, retrieve the first line of stack trace.
-        // truncate stack trace at first "at" string
-        if (errorMessage == null) {
-            int msgTruncateIndex = stackTrace.indexOf("at");
-            if (msgTruncateIndex > 0) {
-                errorMessage = stackTrace.substring(0, msgTruncateIndex).trim();
-            } else {
-                errorMessage = "";
-            }
-        }
-
-        String actualUser = userType == null || userType.id == null ? "Not logged in" : userType.id;
-
-        String emailBody = Templates.populateTemplate(EmailTemplates.SYSTEM_ERROR,
-                "${actualUser}", actualUser,
-                "${requestMethod}", requestMethod,
-                "${requestUserAgent}", requestUserAgent,
-                "${requestUrl}", requestUrl,
-                "${requestPath}", requestPath,
-                "${requestParameters}", requestParams,
-                "${errorMessage}", errorMessage,
-                "${stackTrace}", stackTrace);
-
-        EmailWrapper email = getEmptyEmailAddressedToEmail(Config.SUPPORT_EMAIL);
-        email.setSubject(String.format(EmailType.ADMIN_SYSTEM_ERROR.getSubject(), Config.getAppVersion(), errorMessage));
-        email.setContent(emailBody);
-        return email;
     }
 
     /**

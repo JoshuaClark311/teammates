@@ -14,7 +14,6 @@ import teammates.common.datatransfer.attributes.CourseAttributes;
 import teammates.common.datatransfer.attributes.FeedbackSessionAttributes;
 import teammates.common.datatransfer.attributes.InstructorAttributes;
 import teammates.common.datatransfer.attributes.StudentAttributes;
-import teammates.common.datatransfer.UserType;
 import teammates.common.util.Config;
 import teammates.common.util.Const;
 import teammates.common.util.EmailType;
@@ -31,7 +30,7 @@ import com.google.appengine.api.log.AppLogLine;
 import com.google.appengine.api.log.LogService.LogLevel;
 
 /**
- * SUT: {@link EmailGenerator}
+ * SUT: {@link EmailGenerator}.
  */
 public class EmailGeneratorTest extends BaseLogicTest {
 
@@ -40,7 +39,7 @@ public class EmailGeneratorTest extends BaseLogicTest {
     private static final InstructorsLogic instructorsLogic = InstructorsLogic.inst();
     private static final StudentsLogic studentsLogic = StudentsLogic.inst();
 
-    /** indicates if the test-run is to use GodMode */
+    /** indicates if the test-run is to use GodMode. */
     private static boolean isGodModeEnabled;
 
     @BeforeClass
@@ -202,6 +201,19 @@ public class EmailGeneratorTest extends BaseLogicTest {
         assertTrue(hasStudent1ReceivedEmail);
         assertTrue(hasInstructor1ReceivedEmail);
 
+        ______TS("send summary of all feedback sessions of course email");
+
+        EmailWrapper email = new EmailGenerator().generateFeedbackSessionSummaryOfCourse(session.getCourseId(), student1);
+        subject = String.format(EmailType.STUDENT_EMAIL_CHANGED.getSubject(), course.getName(), course.getId());
+        hasStudent1ReceivedEmail = false;
+
+        if (email.getRecipient().equals(student1.email)) {
+            verifyEmail(email, student1.email, subject, "/summaryOfFeedbackSessionsOfCourseEmailForStudent.html");
+            hasStudent1ReceivedEmail = true;
+        }
+
+        assertTrue(hasStudent1ReceivedEmail);
+
         ______TS("feedback session submission email");
 
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -210,8 +222,7 @@ public class EmailGeneratorTest extends BaseLogicTest {
         time.set(Calendar.HOUR_OF_DAY, 5);
         time.set(Calendar.MINUTE, 30);
         time.set(Calendar.YEAR, 2016);
-        EmailWrapper email = new EmailGenerator()
-                .generateFeedbackSubmissionConfirmationEmailForStudent(session, student1, time);
+        email = new EmailGenerator().generateFeedbackSubmissionConfirmationEmailForStudent(session, student1, time);
         subject = String.format(EmailType.FEEDBACK_SUBMISSION_CONFIRMATION.getSubject(), course.getName(),
                                 session.getFeedbackSessionName());
         verifyEmail(email, student1.email, subject, "/sessionSubmissionConfirmationEmailPositiveTimeZone.html");
@@ -315,49 +326,6 @@ public class EmailGeneratorTest extends BaseLogicTest {
                                 course.getName(), course.getId());
 
         verifyEmail(email, student.email, subject, "/studentCourseRejoinAfterGoogleIdResetEmail.html");
-
-    }
-
-    @Test
-    public void testSystemCrashReportEmailContent() throws IOException {
-
-        ______TS("user is logged in and the error has message");
-
-        AssertionError error = new AssertionError("invalid parameter");
-        String requestMethod = "GET";
-        String requestUserAgent = "user-agent";
-        String requestPath = "/page/studentHome";
-        String requestUrl = "/page/studentHome/";
-        String requestParam = "{}";
-        UserType userType = new UserType("Actual user ABC");
-
-        EmailWrapper email =
-                new EmailGenerator().generateSystemErrorEmail(requestMethod, requestUserAgent, requestPath,
-                                                              requestUrl, requestParam, userType, error);
-
-        // The stack trace is different depending on the environment in which the test is run at.
-        // As a workaround, after the last common line, change all the stack trace to "..."
-        String lastCommonLineRegex =
-                "(?s)(at org\\.testng\\.TestRunner\\.run\\(TestRunner\\.java:621\\)\\s*)at.*?(\\s*</code>)";
-        String modifiedContent = email.getContent().replaceAll(lastCommonLineRegex, "$1...$2");
-        email.setContent(modifiedContent);
-
-        String subject = String.format(EmailType.ADMIN_SYSTEM_ERROR.getSubject(),
-                                       Config.getAppVersion(), error.getMessage());
-
-        verifyEmail(email, Config.SUPPORT_EMAIL, subject, "/systemCrashReportEmail.html");
-
-        ______TS("user is not logged in and the error has no message");
-
-        error = new AssertionError();
-        email = new EmailGenerator().generateSystemErrorEmail(requestMethod, requestUserAgent, requestPath,
-                                                              requestUrl, requestParam, null, error);
-        subject = String.format(EmailType.ADMIN_SYSTEM_ERROR.getSubject(),
-                                Config.getAppVersion(), "java.lang.AssertionError");
-        modifiedContent = email.getContent().replaceAll(lastCommonLineRegex, "$1...$2");
-        email.setContent(modifiedContent);
-
-        verifyEmail(email, Config.SUPPORT_EMAIL, subject, "/systemCrashReportEmailLessInfo.html");
 
     }
 

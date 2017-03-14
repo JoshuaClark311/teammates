@@ -1,3 +1,5 @@
+'use strict';
+
 QUnit.module('common.js');
 
 /**
@@ -230,6 +232,32 @@ QUnit.test('clearStatusMessages()', function(assert) {
 QUnit.test('checkEvaluationForm()', function(assert) {
     // N/A, requires elements in the page
     assert.expect(0);
+});
+
+QUnit.test('addLoadingIndicator()', function(assert) {
+    var $fixture = $('#qunit-fixture');
+    $fixture.append('<button>Submit</button>');
+
+    var $button = $('button', $fixture);
+    var buttonText = 'Loading';
+    addLoadingIndicator($button, buttonText);
+
+    assert.equal($button.text(), buttonText, 'Button text changes to ' + buttonText);
+    assert.equal($button.find('img').attr('src'), '/images/ajax-loader.gif', 'Loading gif appended');
+    assert.ok($button.is(':disabled'), 'Button disabled');
+});
+
+QUnit.test('removeLoadingIndicator()', function(assert) {
+    var $fixture = $('#qunit-fixture');
+    $fixture.append('<button>Submit</button>');
+
+    var $button = $('button', $fixture);
+    var buttonText = 'Complete';
+    removeLoadingIndicator($button, buttonText);
+
+    assert.equal($button.text(), buttonText, 'Button text changes to ' + buttonText);
+    assert.equal($button.find('img').length, 0, 'Loading gif removed');
+    assert.notOk($button.is(':disabled'), 'Button enabled');
 });
 
 QUnit.test('sanitizeGoogleId(googleId)', function(assert) {

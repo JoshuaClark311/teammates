@@ -1,3 +1,5 @@
+'use strict';
+
 var entryPerPage = 200;
 
 var begin = 0;
@@ -15,7 +17,7 @@ $(document).ready(function() {
     showFirstPage();
     updateEntriesCount();
     bindDeleteAccountAction();
-    AdminCommon.bindBackToTopButtons();
+    AdminCommon.bindBackToTopButtons('.back-to-top-left, .back-to-top-right');
 });
 
 function updatePagination() {
